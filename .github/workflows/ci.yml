@@ -48,6 +48,8 @@ jobs:
   codacy-coverage:
     runs-on: ubuntu-latest
     if: always()
+    env:
+      CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,7 +68,7 @@ jobs:
           ls -la coverage.xml || true
 
       - name: Upload coverage to Codacy
-        if: env.CODACY_PROJECT_TOKEN != null
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
         uses: codacy/codacy-coverage-reporter-action@v1
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
@@ -75,6 +77,8 @@ jobs:
 
   codacy-analysis:
     runs-on: ubuntu-latest
+    env:
+      CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -87,7 +91,7 @@ jobs:
           fi
 
       - name: Codacy Analysis (ruff)
-        if: ${{ secrets.CODACY_PROJECT_TOKEN != '' }}
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
         uses: codacy/codacy-analysis-cli-action@v4
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
@@ -97,7 +101,7 @@ jobs:
           directory: "${{ github.workspace }}"
 
       - name: Codacy Analysis (pylint)
-        if: ${{ secrets.CODACY_PROJECT_TOKEN != '' }}
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
         uses: codacy/codacy-analysis-cli-action@v4
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
@@ -107,7 +111,7 @@ jobs:
           directory: "${{ github.workspace }}"
 
       - name: Codacy Analysis (bandit)
-        if: ${{ secrets.CODACY_PROJECT_TOKEN != '' }}
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
         uses: codacy/codacy-analysis-cli-action@v4
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
@@ -117,7 +121,7 @@ jobs:
           directory: "${{ github.workspace }}"
 
       - name: Codacy Analysis (semgrep)
-        if: ${{ secrets.CODACY_PROJECT_TOKEN != '' }}
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
         uses: codacy/codacy-analysis-cli-action@v4
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}

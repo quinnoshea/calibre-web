@@ -36,6 +36,7 @@ except ImportError:
 from . import constants, logger
 from .subproc_wrapper import process_wait
 from .string_helper import strip_whitespaces
+from .exec_paths import validate_binary_path, is_binary_path_key, validate_calibre_binaries_dir
 
 log = logger.create()
 _Base = declarative_base()
@@ -295,6 +296,21 @@ class ConfigSQL(object):
     def get_scheduled_task_settings(self):
         return {k: v for k, v in self.__dict__.items() if k.startswith('schedule_')}
 
+    def _validate_binary_path(self, path: str) -> bool:
+        """
+        Validate a binary path for security compliance.
+        
+        Args:
+            path: Binary path to validate
+            
+        Returns:
+            True if path is valid and safe, False otherwise
+        """
+        if not path:
+            return True  # Empty paths are allowed (will use defaults)
+        
+        return validate_binary_path(path)
+
     def set_from_dictionary(self, dictionary, field, convertor=None, default=None, encode=None):
         """Possibly updates a field of this object.
         The new value, if present, is grabbed from the given dictionary, and optionally passed through a convertor.
@@ -309,6 +325,19 @@ class ConfigSQL(object):
             log.warning("_ConfigSQL trying to set unknown field '%s' = %r", field, new_value)
             return False
 
+        # Validate binary paths before setting
+        if is_binary_path_key(field) and new_value:
+            # Special handling for binariesdir - validate as directory
+            if field == 'config_binariesdir':
+                if not validate_calibre_binaries_dir(new_value):
+                    log.error("Invalid Calibre binaries directory: %s", new_value)
+                    return False
+            else:
+                # Validate as individual binary path
+                if not self._validate_binary_path(new_value):
+                    log.error("Invalid binary path for %s: %s", field, new_value)
+                    return False
+
         if convertor is not None:
             if encode:
                 new_value = convertor(new_value.encode(encode))
@@ -322,11 +351,29 @@ class ConfigSQL(object):
         setattr(self, field, new_value)
         return True
 
+    def _is_sensitive_key(self, key: str) -> bool:
+        """
+        Check if a configuration key contains sensitive information.
+        
+        Args:
+            key: Configuration key to check
+            
+        Returns:
+            True if key is sensitive and should be masked/excluded
+        """
+        sensitive_patterns = ['api', 'token', 'secret', 'password', 'key']
+        key_lower = key.lower()
+        return any(pattern in key_lower for pattern in sensitive_patterns)
+
     def to_dict(self):
         storage = {}
         for k, v in self.__dict__.items():
             if k[0] != '_' and not k.endswith("_e") and not k == "cli":
-                storage[k] = v
+                # Mask sensitive keys to prevent exposure in logs/diagnostics
+                if self._is_sensitive_key(k):
+                    storage[k] = "***MASKED***" if v else v
+                else:
+                    storage[k] = v
         return storage
 
     def load(self):

@@ -52,6 +52,7 @@ except ImportError as e:
     UnacceptableAddressException = MissingSchema = BaseException
 
 from . import calibre_db, cli_param
+from .http_client import safe_request, SafeRequestError, DEFAULT_ALLOWLIST
 from .string_helper import strip_whitespaces
 from .tasks.convert import TaskConvert
 from . import logger, config, db, ub, fs
@@ -59,6 +60,7 @@ from . import gdriveutils as gd
 from .constants import (STATIC_DIR as _STATIC_DIR, CACHE_TYPE_THUMBNAILS, THUMBNAIL_TYPE_COVER, THUMBNAIL_TYPE_SERIES,
                         SUPPORTED_CALIBRE_BINARIES)
 from .subproc_wrapper import process_wait
+from .exec_paths import validate_binary_path
 from .services.worker import WorkerThread
 from .tasks.mail import TaskEmail
 from .tasks.thumbnail import TaskClearCoverThumbnailCache, TaskGenerateCoverThumbnails
@@ -838,21 +840,18 @@ def get_series_thumbnail(series_id, resolution):
 # saves book cover from url
 def save_cover_from_url(url, book_path):
     try:
-        if cli_param.allow_localhost:
-            img = requests.get(url, timeout=(10, 200), allow_redirects=False)  # ToDo: Error Handling
-        elif use_advocate:
-            img = cw_advocate.get(url, timeout=(10, 200), allow_redirects=False)      # ToDo: Error Handling
-        else:
-            log.error("python module advocate is not installed but is needed")
-            return False, _("Python module 'advocate' is not installed but is needed for cover uploads")
+        # Use safe HTTP client with allowlist for known domains
+        allowed_hosts = DEFAULT_ALLOWLIST if not cli_param.allow_localhost else None
+        img = safe_request(url, timeout=(10, 200), allow_redirects=False, allowed_hosts=allowed_hosts)
         img.raise_for_status()
         return save_cover(img, book_path)
     except (socket.gaierror,
             requests.exceptions.HTTPError,
             requests.exceptions.InvalidURL,
             requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout) as ex:
-        # "Invalid host" can be the result of a redirect response
+            requests.exceptions.Timeout,
+            SafeRequestError) as ex:
+        # "Invalid host" can be the result of a redirect response or SSRF protection
         log.error(u'Cover Download Error %s', ex)
         return False, _("Error Downloading Cover")
     except MissingDelegateError as ex:
@@ -1002,6 +1001,11 @@ def check_unrar(unrar_location):
     if not unrar_location:
         return
 
+    # Security validation: ensure binary path is in allowlist
+    if not validate_binary_path(unrar_location):
+        log.error("UnRar binary path validation failed: %s", unrar_location)
+        return _('UnRar binary path not in allowlist or not executable')
+
     if not os.path.exists(unrar_location):
         return _('UnRar binary file not found')
 
@@ -1030,6 +1034,19 @@ def check_calibre(calibre_location):
     try:
         supported_binary_paths = [os.path.join(calibre_location, binary)
                                   for binary in SUPPORTED_CALIBRE_BINARIES.values()]
+        
+        # Security validation: ensure all binary paths are in allowlist
+        security_validation_failed = []
+        for binary_path in supported_binary_paths:
+            if not validate_binary_path(binary_path):
+                binary_name = os.path.basename(binary_path)
+                security_validation_failed.append(binary_name)
+                log.error("Calibre binary path validation failed: %s", binary_path)
+        
+        if security_validation_failed:
+            return _('Calibre binary paths not in allowlist: %(missing)s', 
+                    missing=", ".join(security_validation_failed))
+        
         binaries_available = [os.path.isfile(binary_path) for binary_path in supported_binary_paths]
         binaries_executable = [os.access(binary_path, os.X_OK) for binary_path in supported_binary_paths]
         if all(binaries_available) and all(binaries_executable):

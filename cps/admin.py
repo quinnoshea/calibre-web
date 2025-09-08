@@ -46,6 +46,7 @@ from sqlalchemy.sql.expression import func, or_, text
 from . import constants, logger, helper, services, cli_param
 from . import db, calibre_db, ub, web_server, config, updater_thread, gdriveutils, \
     kobo_sync_status, schedule
+from .exec_paths import validate_binary_path, is_binary_path_key
 from .helper import check_valid_domain, send_test_mail, reset_password, generate_password_hash, check_email, \
     valid_email, check_username
 from .embed_helper import get_calibre_binarypath
@@ -87,6 +88,33 @@ except ImportError as err:
     oauth_check = {}
 
 admi = Blueprint('admin', __name__)
+
+
+def _audit_log_config_change(user_id, key, old_value, new_value):
+    """
+    Log configuration changes for audit purposes.
+    
+    Args:
+        user_id: ID of the user making the change
+        key: Configuration key being changed
+        old_value: Previous value
+        new_value: New value
+    """
+    # Mask sensitive values in logs
+    if key and any(pattern in key.lower() for pattern in ['api', 'token', 'secret', 'password', 'key']):
+        old_value_log = "***MASKED***" if old_value else old_value
+        new_value_log = "***MASKED***" if new_value else new_value
+    else:
+        old_value_log = old_value
+        new_value_log = new_value
+    
+    log.info(
+        "Config change - User: %s, Key: %s, Old: %s, New: %s",
+        user_id or "unknown",
+        key,
+        old_value_log,
+        new_value_log
+    )
 
 
 def admin_required(f):
@@ -1112,7 +1140,38 @@ def _config_checkbox_int(to_save, x):
 
 
 def _config_string(to_save, x):
-    return config.set_from_dictionary(to_save, x, lambda y: strip_whitespaces(y) if y else y)
+    """
+    Set a string configuration value with validation and audit logging.
+    
+    Args:
+        to_save: Dictionary containing configuration values
+        x: Configuration key to set
+        
+    Returns:
+        True if value was changed, False otherwise
+    """
+    old_value = getattr(config, x, None)
+    new_value = to_save.get(x)
+    
+    # Pre-validate binary paths before attempting to save
+    if is_binary_path_key(x) and new_value:
+        if not validate_binary_path(new_value):
+            flash(_("Invalid binary path for %(key)s: %(path)s. Path must be in the allowlist and be executable.", 
+                   key=x, path=new_value), category="error")
+            return False
+    
+    result = config.set_from_dictionary(to_save, x, lambda y: strip_whitespaces(y) if y else y)
+    
+    # Log the change if it occurred
+    if result:
+        _audit_log_config_change(
+            getattr(current_user, 'id', None),
+            x,
+            old_value,
+            new_value
+        )
+    
+    return result
 
 
 def _configuration_gdrive_helper(to_save):

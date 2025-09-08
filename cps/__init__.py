@@ -25,7 +25,7 @@ import sys
 import os
 import mimetypes
 
-from flask import Flask
+from flask import Flask, request
 from .MyLoginManager import MyLoginManager
 from flask_principal import Principal
 
@@ -214,6 +214,27 @@ def create_app():
     register_scheduled_tasks(config.schedule_reconnect)
     register_startup_tasks()
 
-    return app
+    # Set baseline security headers. CSP is report-only by default to avoid
+    # breaking existing inline scripts; set CW_CSP_ENFORCE=1 to enforce.
+    @app.after_request
+    def _set_security_headers(resp):
+        csp_default = (
+            "default-src 'self'; "
+            "img-src 'self' data: blob:; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
+            "form-action 'self'; upgrade-insecure-requests"
+        )
+        csp_value = os.environ.get('CW_CSP', csp_default)
+        enforce = os.environ.get('CW_CSP_ENFORCE', '0').lower() in ('1', 'true', 'yes')
+        csp_header = 'Content-Security-Policy' if enforce else 'Content-Security-Policy-Report-Only'
+        resp.headers.setdefault(csp_header, csp_value)
+        resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        resp.headers.setdefault('X-Frame-Options', 'DENY')
+        resp.headers.setdefault('Referrer-Policy', 'no-referrer')
+        # Send HSTS only over HTTPS (including when behind a proxy)
+        if request.is_secure or request.headers.get('X-Forwarded-Proto', '').lower() == 'https':
+            resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
+        return resp
 
+    return app
 

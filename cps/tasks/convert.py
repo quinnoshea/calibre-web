@@ -31,6 +31,7 @@ from cps.services.worker import CalibreTask
 from cps import db, app
 from cps import logger, config
 from cps.subproc_wrapper import process_open
+from cps.exec_paths import validate_binary_path
 from flask_babel import gettext as _
 from cps.kobo_sync_status import remove_synced_book
 from cps.ub import init_db_thread
@@ -176,6 +177,13 @@ class TaskConvert(CalibreTask):
                 if not os.path.exists(config.config_converterpath):
                     self._handleError(N_("Calibre ebook-convert %(tool)s not found", tool=config.config_converterpath))
                     return
+                
+                # Security validation: ensure converter path is in allowlist
+                if not validate_binary_path(config.config_converterpath):
+                    log.error("Calibre converter path validation failed: %s", config.config_converterpath)
+                    self._handleError(N_("Calibre ebook-convert binary path not in allowlist"))
+                    return
+                
                 has_cover = local_db.get_book(book_id).has_cover
                 check, error_message = self._convert_calibre(file_path, format_old_ext, format_new_ext, has_cover)
 
@@ -219,6 +227,11 @@ class TaskConvert(CalibreTask):
         return
 
     def _convert_kepubify(self, file_path, format_old_ext, format_new_ext):
+        # Security validation: ensure kepubify path is in allowlist
+        if config.config_kepubifypath and not validate_binary_path(config.config_kepubifypath):
+            log.error("Kepubify binary path validation failed: %s", config.config_kepubifypath)
+            return 1, N_("Kepubify binary path not in allowlist")
+        
         if config.config_embed_metadata and config.config_binariesdir:
             tmp_dir, temp_file_name = helper.do_calibre_export(self.book_id, format_old_ext[1:])
             filename = os.path.join(tmp_dir, temp_file_name + format_old_ext)

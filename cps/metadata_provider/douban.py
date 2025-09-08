@@ -25,6 +25,7 @@ from lxml import etree
 
 from cps import logger
 from cps.services.Metadata import Metadata, MetaRecord, MetaSourceInfo
+from cps.http_client import safe_metadata_request, SafeRequestError
 
 log = logger.create()
 
@@ -102,14 +103,15 @@ class Douban(Metadata):
 
     def _get_book_id_list_from_html(self, query: str) -> List[str]:
         try:
-            r = self.session.get(self.SEARCH_URL,
-                                 params={
-                                     "cat": 1001,
-                                     "q": query
-                                 })
+            r = safe_metadata_request(
+                self.SEARCH_URL,
+                params={"cat": 1001, "q": query},
+                headers=self.session.headers,
+                timeout=(10, 20),
+            )
             r.raise_for_status()
 
-        except Exception as e:
+        except (requests.exceptions.RequestException, SafeRequestError) as e:
             log.warning(e)
             return []
 
@@ -124,14 +126,15 @@ class Douban(Metadata):
 
     def _get_book_id_list_from_json(self, query: str) -> List[str]:
         try:
-            r = self.session.get(self.SEARCH_JSON_URL,
-                                 params={
-                                     "cat": 1001,
-                                     "q": query
-                                 })
+            r = safe_metadata_request(
+                self.SEARCH_JSON_URL,
+                params={"cat": 1001, "q": query},
+                headers=self.session.headers,
+                timeout=(10, 20),
+            )
             r.raise_for_status()
 
-        except Exception as e:
+        except (requests.exceptions.RequestException, SafeRequestError) as e:
             log.warning(e)
             return []
 
@@ -151,9 +154,9 @@ class Douban(Metadata):
         log.debug(f"start parsing {url}")
 
         try:
-            r = self.session.get(url)
+            r = safe_metadata_request(url, headers=self.session.headers, timeout=(10, 20))
             r.raise_for_status()
-        except Exception as e:
+        except (requests.exceptions.RequestException, SafeRequestError) as e:
             log.warning(e)
             return None
 

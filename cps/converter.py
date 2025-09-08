@@ -23,6 +23,7 @@ from flask_babel import lazy_gettext as N_
 
 from . import config, logger
 from .subproc_wrapper import process_wait
+from .exec_paths import validate_binary_path
 
 
 log = logger.create()
@@ -33,6 +34,14 @@ _EXECUTION_ERROR = N_('Execution permissions missing')
 
 
 def _get_command_version(path, pattern, argument=None):
+    if not path:
+        return _NOT_INSTALLED
+    
+    # Security validation: ensure binary path is in allowlist
+    if not validate_binary_path(path):
+        log.error("Binary path validation failed: %s", path)
+        return N_('Binary path not in allowlist')
+    
     if os.path.exists(path):
         command = [path]
         if argument:

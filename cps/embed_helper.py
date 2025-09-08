@@ -22,6 +22,7 @@ from .file_helper import get_temp_dir
 from .subproc_wrapper import process_open
 from . import logger, config
 from .constants import SUPPORTED_CALIBRE_BINARIES
+from .exec_paths import validate_binary_path
 
 log = logger.create()
 
@@ -31,6 +32,12 @@ def do_calibre_export(book_id, book_format):
         quotes = [4, 6]
         tmp_dir = get_temp_dir()
         calibredb_binarypath = get_calibre_binarypath("calibredb")
+        
+        # Security validation: ensure calibredb path is in allowlist
+        if calibredb_binarypath and not validate_binary_path(calibredb_binarypath):
+            log.error("CalibreDB binary path validation failed: %s", calibredb_binarypath)
+            return None, None
+        
         temp_file_name = str(uuid4())
         my_env = os.environ.copy()
         if config.config_calibre_split:

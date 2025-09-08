@@ -31,6 +31,7 @@ from flask_babel import format_datetime
 from flask_babel import gettext as _
 
 from . import constants, logger  #  config, web_server
+from .http_client import safe_github_request, SafeRequestError
 from .file_helper import get_temp_dir
 
 
@@ -79,7 +80,7 @@ class Updater(threading.Thread):
             self.status = 1
             log.debug('Download update file')
             headers = {'Accept': 'application/vnd.github.v3+json'}
-            r = requests.get(self._get_request_path(), stream=True, headers=headers, timeout=(10, 600))
+            r = safe_github_request(self._get_request_path(), headers=headers, timeout=(10, 600))
             r.raise_for_status()
 
             self.status = 2
@@ -356,7 +357,7 @@ class Updater(threading.Thread):
                 if parent_commit['sha'] != status['current_commit_hash']:
                     try:
                         headers = {'Accept': 'application/vnd.github.v3+json'}
-                        r = requests.get(parent_commit['url'], headers=headers, timeout=10)
+                        r = safe_github_request(parent_commit['url'], headers=headers, timeout=(10, 10))
                         r.raise_for_status()
                         parent_data = r.json()
 
@@ -382,9 +383,9 @@ class Updater(threading.Thread):
         update_data = dict()
         try:
             headers = {'Accept': 'application/vnd.github.v3+json'}
-            r = requests.get(repository_url + '/git/commits/' + commit['object']['sha'],
+            r = safe_github_request(repository_url + '/git/commits/' + commit['object']['sha'],
                              headers=headers,
-                             timeout=10)
+                             timeout=(10, 10))
             r.raise_for_status()
             update_data = r.json()
         except requests.exceptions.HTTPError as e:
@@ -393,6 +394,8 @@ class Updater(threading.Thread):
             status['message'] = _('Connection error')
         except requests.exceptions.Timeout:
             status['message'] = _('Timeout while establishing connection')
+        except SafeRequestError as e:
+            status['message'] = _('Security error') + ' ' + str(e)
         except (requests.exceptions.RequestException, ValueError):
             status['message'] = _('General error')
         return status, update_data
@@ -617,7 +620,7 @@ class Updater(threading.Thread):
             status['current_commit_hash'] = version['version']
         try:
             headers = {'Accept': 'application/vnd.github.v3+json'}
-            r = requests.get(repository_url, headers=headers, timeout=10)
+            r = safe_github_request(repository_url, headers=headers, timeout=(10, 10))
             commit = r.json()
             r.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -630,6 +633,8 @@ class Updater(threading.Thread):
             status['message'] = _(u'Connection error')
         except requests.exceptions.Timeout:
             status['message'] = _(u'Timeout while establishing connection')
+        except SafeRequestError as e:
+            status['message'] = _(u'Security error') + ': ' + str(e)
         except (requests.exceptions.RequestException, ValueError):
             status['message'] = _(u'General error')
         log.debug('Updater status: {}'.format(status['message'] or "OK"))

@@ -24,6 +24,7 @@ from datetime import datetime
 import requests
 
 from cps import logger
+from cps.http_client import safe_metadata_request, SafeRequestError
 from cps.isoLanguages import get_lang3, get_language_name
 from cps.services.Metadata import MetaRecord, MetaSourceInfo, Metadata
 
@@ -50,9 +51,9 @@ class Google(Metadata):
                 tokens = [quote(t.encode("utf-8")) for t in title_tokens]
                 query = "+".join(tokens)
             try:
-                results = requests.get(Google.SEARCH_URL + query)
+                results = safe_metadata_request(Google.SEARCH_URL + query)
                 results.raise_for_status()
-            except Exception as e:
+            except (Exception, SafeRequestError) as e:
                 log.warning(e)
                 return []
             for result in results.json().get("items", []):

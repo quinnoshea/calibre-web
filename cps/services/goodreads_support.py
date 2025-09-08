@@ -30,6 +30,7 @@ except ImportError:
     Levenshtein = False
 
 from .. import logger
+from ..http_client import safe_metadata_request, SafeRequestError
 from ..clean_html import clean_string
 
 
@@ -53,11 +54,14 @@ class GoodreadsRequestException(Exception):
 class my_GoodreadsRequest(GoodreadsRequest):
 
     def request(self):
-        resp = requests.get(self.host+self.path, params=self.params,
-                            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) "
-                                                   "Gecko/20100101 Firefox/125.0"})
-        if resp.status_code != 200:
-            raise GoodreadsRequestException(resp.reason, self.path)
+        try:
+            resp = safe_metadata_request(self.host+self.path, params=self.params,
+                                headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) "
+                                                       "Gecko/20100101 Firefox/125.0"})
+            if resp.status_code != 200:
+                raise GoodreadsRequestException(resp.reason, self.path)
+        except SafeRequestError as e:
+            raise GoodreadsRequestException(str(e), self.path)
         if self.req_format == 'xml':
             data_dict = xmltodict.parse(resp.content)
             return data_dict['GoodreadsResponse']

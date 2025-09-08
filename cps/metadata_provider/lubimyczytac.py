@@ -28,6 +28,7 @@ from lxml.html import HtmlElement, fromstring, tostring
 from markdown2 import Markdown
 
 from cps import logger
+from cps.http_client import safe_metadata_request, SafeRequestError
 from cps.isoLanguages import get_language_name
 from cps.services.Metadata import MetaRecord, MetaSourceInfo, Metadata
 
@@ -118,9 +119,9 @@ class LubimyCzytac(Metadata):
     ) -> Optional[List[MetaRecord]]:
         if self.active:
             try:
-                result = requests.get(self._prepare_query(title=query))
+                result = safe_metadata_request(self._prepare_query(title=query))
                 result.raise_for_status()
-            except Exception as e:
+            except (Exception, SafeRequestError) as e:
                 log.warning(e)
                 return None
             root = fromstring(result.text)
@@ -212,9 +213,9 @@ class LubimyCzytacParser:
         self, match: MetaRecord, generic_cover: str, locale: str
     ) -> MetaRecord:
         try:
-            response = requests.get(match.url)
+            response = safe_metadata_request(match.url)
             response.raise_for_status()
-        except Exception as e:
+        except (Exception, SafeRequestError) as e:
             log.warning(e)
             return None
         self.root = fromstring(response.text)

@@ -27,6 +27,7 @@ except ImportError:
     pass
 
 from cps.services.Metadata import MetaRecord, MetaSourceInfo, Metadata
+from cps.http_client import safe_metadata_request, SafeRequestError
 import cps.logger as logger
 
 #from time import time
@@ -50,20 +51,21 @@ class Amazon(Metadata):
                'accept-encoding': 'gzip, deflate, br, zstd',
                'accept-language': 'en-US,en;q=0.9'}
     session = requests.Session()
-    session.headers=headers
+    session.headers = headers
 
     def search(
         self, query: str, generic_cover: str = "", locale: str = "en"
     ) -> Optional[List[MetaRecord]]:
         def inner(link, index) -> [dict, int]:
-            with self.session as session:
-                try:
-                    r = session.get(f"https://www.amazon.com/{link}")
-                    r.raise_for_status()
-                except Exception as ex:
-                    log.warning(ex)
-                    return []
-                long_soup = BS(r.text, "lxml")  #~4sec :/
+            try:
+                r = safe_metadata_request(
+                    f"https://www.amazon.com/{link}", headers=self.headers, timeout=(10, 20)
+                )
+                r.raise_for_status()
+            except (requests.exceptions.RequestException, SafeRequestError) as ex:
+                log.warning(ex)
+                return []
+            long_soup = BS(r.text, "lxml")  #~4sec :/
                 soup2 = long_soup.find("div", attrs={"cel_widget_id": "dpx-ppd_csm_instrumentation_wrapper"})
                 if soup2 is None:
                     return []
@@ -119,15 +121,19 @@ class Amazon(Metadata):
         val = list()
         if self.active:
             try:
-                results = self.session.get(
-                    f"https://www.amazon.com/s?k={query.replace(' ', '+')}&i=digital-text&sprefix={query.replace(' ', '+')}"
-                    f"%2Cdigital-text&ref=nb_sb_noss",
-                    headers=self.headers)
+                results = safe_metadata_request(
+                    (
+                        f"https://www.amazon.com/s?k={query.replace(' ', '+')}&i=digital-text&sprefix={query.replace(' ', '+')}"
+                        f"%2Cdigital-text&ref=nb_sb_noss"
+                    ),
+                    headers=self.headers,
+                    timeout=(10, 20),
+                )
                 results.raise_for_status()
             except requests.exceptions.HTTPError as e:
                 log.error_or_exception(e)
                 return []
-            except Exception as e:
+            except (requests.exceptions.RequestException, SafeRequestError) as e:
                 log.warning(e)
                 return []
             soup = BS(results.text, 'html.parser')

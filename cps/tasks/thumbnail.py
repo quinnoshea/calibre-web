@@ -18,11 +18,12 @@
 
 import os
 from shutil import copyfile, copyfileobj
-from urllib.request import urlopen
+# from urllib.request import urlopen  # Replaced with safe HTTP client
 from io import BytesIO
 from datetime import datetime, timezone
 
 from .. import constants
+from ..http_client import fetch_bytes, SafeRequestError, GOOGLE_DRIVE_ALLOWLIST
 from cps import config, db, fs, gdriveutils, logger, ub, app
 from cps.services.worker import CalibreTask, STAT_CANCELLED, STAT_ENDED
 from sqlalchemy import func, text, or_
@@ -383,7 +384,8 @@ class TaskGenerateSeriesThumbnails(CalibreTask):
 
                     stream = None
                     try:
-                        stream = urlopen(web_content_link)
+                        content = fetch_bytes(web_content_link, allowed_hosts=GOOGLE_DRIVE_ALLOWLIST, max_bytes=10*1024*1024)
+                        stream = BytesIO(content)
                         with Image(file=stream) as img:
                             # Use the first image in this set to determine the width and height to scale the
                             # other images in this set

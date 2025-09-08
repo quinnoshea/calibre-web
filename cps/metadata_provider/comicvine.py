@@ -22,6 +22,7 @@ from urllib.parse import quote
 
 import requests
 from cps import logger
+from cps.http_client import safe_metadata_request, SafeRequestError
 from cps.services.Metadata import MetaRecord, MetaSourceInfo, Metadata
 
 log = logger.create()
@@ -50,12 +51,12 @@ class ComicVine(Metadata):
                 tokens = [quote(t.encode("utf-8")) for t in title_tokens]
                 query = "%20".join(tokens)
             try:
-                result = requests.get(
+                result = safe_metadata_request(
                     f"{ComicVine.BASE_URL}{query}{ComicVine.QUERY_PARAMS}",
                     headers=ComicVine.HEADERS,
                 )
                 result.raise_for_status()
-            except Exception as e:
+            except (Exception, SafeRequestError) as e:
                 log.warning(e)
                 return None
             for result in result.json()["results"]:

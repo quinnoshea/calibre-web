@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [ fix/CVE-2025-7404, main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv (with Python)
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+
+      - name: Install deps with uv
+        run: |
+          uv pip install -r requirements.txt
+          uv pip install pre-commit coverage
+
+      - name: Pre-commit (lint/format)
+        run: |
+          uv run pre-commit install
+          uv run pre-commit run --all-files
+
+      - name: Unit tests with coverage (unittest)
+        run: |
+          uv run coverage run -m unittest discover -s tests -p "test_*.py" || true
+          uv run coverage xml -o coverage.xml || true
+          uv run coverage html || true
+          uv run coverage report || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: |
+            coverage.xml
+            htmlcov/
+            .coverage
+
+  codacy-coverage:
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv (with Python)
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+
+      - name: Ensure coverage.xml exists
+        run: |
+          if [ ! -f coverage.xml ]; then
+            uv pip install coverage
+            uv run coverage run -m unittest discover -s tests -p "test_*.py" || true
+            uv run coverage xml -o coverage.xml || true
+          fi
+          ls -la coverage.xml || true
+
+      - name: Upload coverage to Codacy
+        if: env.CODACY_PROJECT_TOKEN != null
+        uses: codacy/codacy-coverage-reporter-action@v1
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: coverage.xml
+          force-coverage-parser: cobertura
+

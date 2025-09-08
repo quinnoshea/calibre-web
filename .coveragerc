@@ -1,0 +1,32 @@
+[run]
+source =
+    cps
+omit =
+    tests/*
+    cps/templates/*
+    cps/static/*
+    */__init__.py
+branch = True
+data_file = .coverage
+
+[report]
+show_missing = True
+skip_covered = False
+skip_empty = False
+exclude_lines =
+    pragma: no cover
+    pragma: nocover
+    def __repr__
+    def __str__
+    if __name__ == .__main__.
+    raise NotImplementedError
+    except ImportError:
+    except ModuleNotFoundError:
+
+[xml]
+output = coverage.xml
+
+[html]
+directory = htmlcov
+title = Calibre Web Coverage Report
+

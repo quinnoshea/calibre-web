@@ -15,9 +15,10 @@
 #
 #  You should have received a copy of the GNU General Public License
 #  along with this program. If not, see <http://www.gnu.org/licenses/>.
-import re
+import string
+
+_STRIP_CHARS = string.whitespace + '\u200B\u200C\u200D\ufeff'
 
 
 def strip_whitespaces(text):
-    return re.sub(r"(^[\s\u200B-\u200D\ufeff]+)|([\s\u200B-\u200D\ufeff]+$)","", text)
-
+    return text.strip(_STRIP_CHARS)
